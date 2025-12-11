@@ -6,34 +6,10 @@ const app = express();
 app.use(express.json());
 app.use(cors());
 
-// PASTE YOUR CONNECTION STRING INSIDE THE QUOTES BELOW vvv
-const MONGO_URI = "
-const { MongoClient, ServerApiVersion } = require('mongodb');
-const uri = "mongodb+srv://libraryadmin:<librarypassword123>@cluster0.jntmcep.mongodb.net/?appName=Cluster0";
-
-// Create a MongoClient with a MongoClientOptions object to set the Stable API version
-const client = new MongoClient(uri, {
-  serverApi: {
-    version: ServerApiVersion.v1,
-    strict: true,
-    deprecationErrors: true,
-  }
-});
-
-async function run() {
-  try {
-    // Connect the client to the server	(optional starting in v4.7)
-    await client.connect();
-    // Send a ping to confirm a successful connection
-    await client.db("admin").command({ ping: 1 });
-    console.log("Pinged your deployment. You successfully connected to MongoDB!");
-  } finally {
-    // Ensures that the client will close when you finish/error
-    await client.close();
-  }
-}
-run().catch(console.dir);
-"; 
+// --- YOUR DATABASE CONNECTION ---
+// I added your string here. Make sure <librarypassword123> is the REAL password!
+// If your password is just 'librarypassword123', remove the < and > symbols.
+const MONGO_URI = "mongodb+srv://libraryadmin:librarypassword123@cluster0.jntmcep.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0";
 
 mongoose.connect(MONGO_URI)
   .then(() => console.log("✅ MongoDB Connected Successfully"))
@@ -71,7 +47,6 @@ app.post('/api/books', async (req, res) => {
   try {
     const book = new Book(req.body);
     book.available = book.copies;
-    // Simple QR text generation
     book.qrCode = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${book._id}`;
     await book.save();
     res.json(book);
@@ -118,7 +93,6 @@ app.post('/api/return', async (req, res) => {
   txn.returnDate = new Date();
   txn.status = 'Returned';
   
-  // Calculate Fine (10 per day overdue)
   const diffTime = txn.returnDate - txn.dueDate;
   if(diffTime > 0) {
     const daysOver = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
