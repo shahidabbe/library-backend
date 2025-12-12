@@ -4,116 +4,97 @@ const cors = require('cors');
 const app = express();
 
 app.use(express.json());
-app.use(cors()); // Allows Frontend to connect
+app.use(cors());
 
-// --- DATABASE CONNECTION ---
 const MONGO_URI = "mongodb+srv://libraryadmin:librarypassword123@cluster0.jntmcep.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0";
 
 mongoose.connect(MONGO_URI)
-  .then(() => console.log("✅ MongoDB Connected Successfully"))
-  .catch(err => console.error("❌ MongoDB Connection Error:", err));
+  .then(() => console.log("✅ MongoDB Connected"))
+  .catch(err => console.error("❌ Error:", err));
 
-// --- DATA MODELS ---
+// --- SCHEMAS ---
 const bookSchema = new mongoose.Schema({
   title: String, author: String, language: String, 
   volume: String, section: String, category: String, 
-  shelfNumber: String, copies: Number, 
-  available: Number, qrCode: String
+  shelfNumber: String, copies: Number, available: Number
 });
 const Book = mongoose.model('Book', bookSchema);
 
 const memberSchema = new mongoose.Schema({
   name: String, fatherName: String, address: String, 
-  email: String, phone: String, 
-  qrCode: String, joinDate: { type: Date, default: Date.now }
+  email: String, phone: String
 });
 const Member = mongoose.model('Member', memberSchema);
 
 const txnSchema = new mongoose.Schema({
   bookId: String, memberId: String, bookTitle: String,
-  issueDate: Date, returnDate: Date,
-  status: String // 'Issued' or 'Returned'
+  issueDate: Date, returnDate: Date, status: String
 });
 const Transaction = mongoose.model('Transaction', txnSchema);
 
-// --- API ROUTES ---
+// --- ROUTES ---
 
-app.get('/', (req, res) => res.send('Library Backend is Running!'));
+app.get('/', (req, res) => res.send('Backend Running'));
 
-// 1. GET ALL BOOKS (This was missing!)
-app.get('/api/books', async (req, res) => {
-  try {
-    const books = await Book.find();
-    res.json(books);
-  } catch(e) { res.status(500).json({error: e.message}); }
-});
+// GET
+app.get('/api/books', async (req, res) => res.json(await Book.find()));
+app.get('/api/members', async (req, res) => res.json(await Member.find()));
 
-// 2. GET ALL MEMBERS (This was missing!)
-app.get('/api/members', async (req, res) => {
-  try {
-    const members = await Member.find();
-    res.json(members);
-  } catch(e) { res.status(500).json({error: e.message}); }
-});
-
-// 3. ADD BOOK
+// POST (Add)
 app.post('/api/books', async (req, res) => {
-  try {
-    const book = new Book(req.body);
-    book.available = book.copies; // Set initial availability
-    await book.save();
-    res.json(book);
-  } catch(e) { res.status(500).json({error: e.message}); }
+  const book = new Book(req.body);
+  book.available = book.copies;
+  await book.save();
+  res.json(book);
 });
 
-// 4. ADD MEMBER
 app.post('/api/members', async (req, res) => {
-  try {
-    const member = new Member(req.body);
-    await member.save();
-    res.json(member);
-  } catch(e) { res.status(500).json({error: e.message}); }
+  const member = new Member(req.body);
+  await member.save();
+  res.json(member);
 });
 
-// 5. ISSUE BOOK (Updated path to match Frontend)
+// DELETE (NEW!) - This allows you to remove books/members
+app.delete('/api/books/:id', async (req, res) => {
+  await Book.findByIdAndDelete(req.params.id);
+  res.json({message: "Deleted"});
+});
+
+app.delete('/api/members/:id', async (req, res) => {
+  await Member.findByIdAndDelete(req.params.id);
+  res.json({message: "Deleted"});
+});
+
+// ISSUE/RETURN
 app.post('/api/transactions/issue', async (req, res) => {
   const { bookId, memberId } = req.body;
-  
   const book = await Book.findById(bookId);
-  if (!book || book.copies < 1) return res.status(400).json({error: "Book unavailable"});
-
+  if (!book || book.copies < 1) return res.status(400).json({error: "Unavailable"});
+  
   const txn = new Transaction({
-    bookId, memberId, bookTitle: book.title,
-    issueDate: new Date(), status: 'Issued'
+    bookId, memberId, bookTitle: book.title, issueDate: new Date(), status: 'Issued'
   });
   await txn.save();
-
-  // Decrease copies
+  
   book.copies -= 1;
   await book.save();
-  
   res.json(txn);
 });
 
-// 6. RETURN BOOK (Updated path to match Frontend)
 app.post('/api/transactions/return', async (req, res) => {
   const { bookId, memberId } = req.body;
-  
-  // Find active transaction
   const txn = await Transaction.findOne({ bookId, memberId, status: 'Issued' });
-  if(!txn) return res.status(400).json({error: "No active issue found"});
+  if(!txn) return res.status(400).json({error: "No active issue"});
 
   txn.returnDate = new Date();
   txn.status = 'Returned';
   await txn.save();
 
-  // Increase copies back
   const book = await Book.findById(bookId);
   book.copies += 1;
   await book.save();
-  
-  res.json({ message: "Returned Successfully" });
+  res.json({ message: "Returned" });
 });
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+app.listen(PORT, () => console.log(`Server on ${PORT}`));
