@@ -81,20 +81,27 @@ app.post('/api/transactions/issue', async (req, res) => {
   res.json(txn);
 });
 
+// 6. RETURN BOOK (New Version: Only needs Book ID)
 app.post('/api/transactions/return', async (req, res) => {
-  const { bookId, memberId } = req.body;
-  const txn = await Transaction.findOne({ bookId, memberId, status: 'Issued' });
-  if(!txn) return res.status(400).json({error: "No active issue"});
+  const { bookId } = req.body;
+  // Find any transaction for this book that is still 'Issued'
+  const txn = await Transaction.findOne({ bookId: bookId, status: 'Issued' });
+  
+  if(!txn) return res.status(400).json({error: "Book is not currently issued"});
 
   txn.returnDate = new Date();
   txn.status = 'Returned';
   await txn.save();
 
   const book = await Book.findById(bookId);
-  book.copies += 1;
-  await book.save();
-  res.json({ message: "Returned" });
+  if(book) {
+      book.copies += 1;
+      await book.save();
+  }
+  
+  res.json({ message: "Returned Successfully" });
 });
+
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server on ${PORT}`));
