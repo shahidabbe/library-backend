@@ -37,9 +37,19 @@ const Transaction = mongoose.model('Transaction', txnSchema);
 
 app.get('/', (req, res) => res.send('Backend Running'));
 
-// GET
+// GET BOOKS & MEMBERS
 app.get('/api/books', async (req, res) => res.json(await Book.find()));
 app.get('/api/members', async (req, res) => res.json(await Member.find()));
+
+// --- NEW ROUTE: GET ALL TRANSACTIONS (HISTORY) ---
+// This is required to show who has which book and member history
+app.get('/api/transactions', async (req, res) => {
+  try {
+      // Sort by newest first
+      const txns = await Transaction.find().sort({ issueDate: -1 }); 
+      res.json(txns);
+  } catch (e) { res.status(500).json({error: "Failed to fetch transactions"}); }
+});
 
 // POST (Add)
 app.post('/api/books', async (req, res) => {
@@ -66,7 +76,7 @@ app.delete('/api/members/:id', async (req, res) => {
   res.json({message: "Deleted"});
 });
 
-// UPDATE (EDIT) - NEW ROUTES ADDED HERE
+// UPDATE (EDIT)
 app.put('/api/books/:id', async (req, res) => {
   try {
       await Book.findByIdAndUpdate(req.params.id, req.body);
@@ -115,7 +125,6 @@ app.post('/api/transactions/return', async (req, res) => {
   txn.status = 'Returned';
 
   // 2. CALCULATE FINE (5 Rupees per day late)
-  // Check if returnDate is AFTER dueDate
   if (returnDate > txn.dueDate) {
       const diffTime = Math.abs(returnDate - txn.dueDate);
       const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
@@ -132,7 +141,6 @@ app.post('/api/transactions/return', async (req, res) => {
       await book.save();
   }
   
-  // Send back the fine amount so frontend can show it
   res.json({ message: "Returned Successfully", fine: txn.fine });
 });
 
