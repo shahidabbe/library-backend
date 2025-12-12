@@ -28,7 +28,8 @@ const Member = mongoose.model('Member', memberSchema);
 
 const txnSchema = new mongoose.Schema({
   bookId: String, memberId: String, bookTitle: String,
-  issueDate: Date, returnDate: Date, status: String
+  issueDate: Date, dueDate: Date, returnDate: Date, 
+  status: String, fine: { type: Number, default: 0 }
 });
 const Transaction = mongoose.model('Transaction', txnSchema);
 
