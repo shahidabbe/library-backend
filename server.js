@@ -55,7 +55,7 @@ app.post('/api/members', async (req, res) => {
   res.json(member);
 });
 
-// DELETE (NEW!) - This allows you to remove books/members
+// DELETE
 app.delete('/api/books/:id', async (req, res) => {
   await Book.findByIdAndDelete(req.params.id);
   res.json({message: "Deleted"});
@@ -66,14 +66,35 @@ app.delete('/api/members/:id', async (req, res) => {
   res.json({message: "Deleted"});
 });
 
-// ISSUE/RETURN
+// UPDATE (EDIT) - NEW ROUTES ADDED HERE
+app.put('/api/books/:id', async (req, res) => {
+  try {
+      await Book.findByIdAndUpdate(req.params.id, req.body);
+      res.json({message: "Updated"});
+  } catch (e) { res.status(500).json({error: "Update Failed"}); }
+});
+
+app.put('/api/members/:id', async (req, res) => {
+  try {
+      await Member.findByIdAndUpdate(req.params.id, req.body);
+      res.json({message: "Updated"});
+  } catch (e) { res.status(500).json({error: "Update Failed"}); }
+});
+
+// ISSUE BOOK (With Due Date)
 app.post('/api/transactions/issue', async (req, res) => {
   const { bookId, memberId } = req.body;
   const book = await Book.findById(bookId);
   if (!book || book.copies < 1) return res.status(400).json({error: "Unavailable"});
   
+  // 1. SET DUE DATE (15 Days from now)
+  const issueDate = new Date();
+  const dueDate = new Date();
+  dueDate.setDate(issueDate.getDate() + 15); 
+
   const txn = new Transaction({
-    bookId, memberId, bookTitle: book.title, issueDate: new Date(), status: 'Issued'
+    bookId, memberId, bookTitle: book.title, 
+    issueDate, dueDate, status: 'Issued'
   });
   await txn.save();
   
@@ -82,16 +103,27 @@ app.post('/api/transactions/issue', async (req, res) => {
   res.json(txn);
 });
 
-// 6. RETURN BOOK (New Version: Only needs Book ID)
+// RETURN BOOK (With Fine Calculation)
 app.post('/api/transactions/return', async (req, res) => {
   const { bookId } = req.body;
-  // Find any transaction for this book that is still 'Issued'
   const txn = await Transaction.findOne({ bookId: bookId, status: 'Issued' });
   
   if(!txn) return res.status(400).json({error: "Book is not currently issued"});
 
-  txn.returnDate = new Date();
+  const returnDate = new Date();
+  txn.returnDate = returnDate;
   txn.status = 'Returned';
+
+  // 2. CALCULATE FINE (5 Rupees per day late)
+  // Check if returnDate is AFTER dueDate
+  if (returnDate > txn.dueDate) {
+      const diffTime = Math.abs(returnDate - txn.dueDate);
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+      txn.fine = diffDays * 5; 
+  } else {
+      txn.fine = 0;
+  }
+
   await txn.save();
 
   const book = await Book.findById(bookId);
@@ -100,9 +132,9 @@ app.post('/api/transactions/return', async (req, res) => {
       await book.save();
   }
   
-  res.json({ message: "Returned Successfully" });
+  // Send back the fine amount so frontend can show it
+  res.json({ message: "Returned Successfully", fine: txn.fine });
 });
-
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server on ${PORT}`));
