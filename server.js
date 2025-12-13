@@ -1,6 +1,7 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
+const XLSX = require('xlsx'); // <--- ADDED THIS LINE (Make sure to run 'npm install xlsx')
 const app = express();
 
 app.use(express.json());
@@ -49,6 +50,69 @@ app.get('/api/transactions', async (req, res) => {
       const txns = await Transaction.find().sort({ issueDate: -1 }); 
       res.json(txns);
   } catch (e) { res.status(500).json({error: "Failed to fetch transactions"}); }
+});
+
+// --- NEW: EXPORT TO EXCEL ---
+app.get('/api/export-excel', async (req, res) => {
+  try {
+    // 1. Fetch all data
+    const books = await Book.find();
+    const members = await Member.find();
+    const transactions = await Transaction.find();
+
+    // 2. Create a new workbook
+    const workbook = XLSX.utils.book_new();
+
+    // 3. SHEET 1: BOOKS
+    // We map the data to clean Column Names
+    const booksData = books.map(b => ({
+      Title: b.title,
+      Author: b.author,
+      Language: b.language,
+      Category: b.category,
+      'Shelf Number': b.shelfNumber,
+      'Total Copies': b.copies,
+      'Available': b.available
+    }));
+    const booksSheet = XLSX.utils.json_to_sheet(booksData);
+    XLSX.utils.book_append_sheet(workbook, booksSheet, 'Books');
+
+    // 4. SHEET 2: MEMBERS
+    const membersData = members.map(m => ({
+      Name: m.name,
+      'Father Name': m.fatherName,
+      Phone: m.phone,
+      Email: m.email,
+      Address: m.address
+    }));
+    const membersSheet = XLSX.utils.json_to_sheet(membersData);
+    XLSX.utils.book_append_sheet(workbook, membersSheet, 'Members');
+
+    // 5. SHEET 3: ISSUED/RETURNED HISTORY
+    const issuedData = transactions.map(t => ({
+      'Book Title': t.bookTitle,
+      'Member ID': t.memberId,
+      Status: t.status,
+      'Issue Date': t.issueDate ? t.issueDate.toLocaleDateString() : '',
+      'Due Date': t.dueDate ? t.dueDate.toLocaleDateString() : '',
+      'Return Date': t.returnDate ? t.returnDate.toLocaleDateString() : '',
+      'Fine Amount': t.fine || 0
+    }));
+    const issuedSheet = XLSX.utils.json_to_sheet(issuedData);
+    XLSX.utils.book_append_sheet(workbook, issuedSheet, 'Transactions');
+
+    // 6. Send file as download
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename="Library_Data.xlsx"');
+    
+    // Create buffer and send
+    const buffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'buffer' });
+    res.send(buffer);
+
+  } catch (e) {
+    console.error("Export Error:", e);
+    res.status(500).json({ error: "Failed to export Excel file" });
+  }
 });
 
 // POST (Add)
