@@ -1,7 +1,7 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
-const XLSX = require('xlsx'); // <--- ADDED THIS LINE (Make sure to run 'npm install xlsx')
+const XLSX = require('xlsx'); 
 const app = express();
 
 app.use(express.json());
@@ -34,6 +34,14 @@ status: String, fine: { type: Number, default: 0 }
 });
 const Transaction = mongoose.model('Transaction', txnSchema);
 
+// --- NEW: NOTICE BOARD SCHEMA ---
+const settingSchema = new mongoose.Schema({
+  key: { type: String, unique: true },
+  value: String
+});
+const Setting = mongoose.model('Setting', settingSchema);
+
+
 // --- ROUTES ---
 
 app.get('/', (req, res) => res.send('Backend Running'));
@@ -43,16 +51,14 @@ app.get('/api/books', async (req, res) => res.json(await Book.find()));
 app.get('/api/members', async (req, res) => res.json(await Member.find()));
 
 // --- NEW ROUTE: GET ALL TRANSACTIONS (HISTORY) ---
-// This is required to show who has which book and member history
 app.get('/api/transactions', async (req, res) => {
 try {
-// Sort by newest first
 const txns = await Transaction.find().sort({ issueDate: -1 });
 res.json(txns);
 } catch (e) { res.status(500).json({error: "Failed to fetch transactions"}); }
 });
 
-// --- NEW: EXPORT TO EXCEL (WITH IDS & QR CODES) ---
+// --- NEW: EXPORT TO EXCEL ---
 app.get('/api/export-excel', async (req, res) => {
 try {
 const books = await Book.find();
@@ -61,39 +67,24 @@ const transactions = await Transaction.find();
 
 const workbook = XLSX.utils.book_new();
 
-// 3. SHEET 1: BOOKS
+// SHEET 1: BOOKS
 const booksData = books.map(b => ({
-ID: b._id.toString(), // <--- ADDED ID HERE
-Title: b.title,
-Author: b.author,
-Language: b.language,
-Category: b.category,
-'Shelf Number': b.shelfNumber,
-'Total Copies': b.copies,
-'Available': b.available,
-'QR Code Data': b._id.toString() // <--- ADDED QR DATA COLUMN
+ID: b._id.toString(), Title: b.title, Author: b.author, Language: b.language, Category: b.category,
+'Shelf Number': b.shelfNumber, 'Total Copies': b.copies, 'Available': b.available, 'QR Code Data': b._id.toString()
 }));
 const booksSheet = XLSX.utils.json_to_sheet(booksData);
 XLSX.utils.book_append_sheet(workbook, booksSheet, 'Books');
 
-// 4. SHEET 2: MEMBERS
+// SHEET 2: MEMBERS
 const membersData = members.map(m => ({
-ID: m._id.toString(), // <--- ADDED ID HERE
-Name: m.name,
-'Father Name': m.fatherName,
-Phone: m.phone,
-Email: m.email,
-Address: m.address,
-'QR Code Data': m._id.toString() // <--- ADDED QR DATA COLUMN
+ID: m._id.toString(), Name: m.name, 'Father Name': m.fatherName, Phone: m.phone, Email: m.email, Address: m.address, 'QR Code Data': m._id.toString()
 }));
 const membersSheet = XLSX.utils.json_to_sheet(membersData);
 XLSX.utils.book_append_sheet(workbook, membersSheet, 'Members');
 
-// 5. SHEET 3: ISSUED/RETURNED HISTORY
+// SHEET 3: TRANSACTIONS
 const issuedData = transactions.map(t => ({
-'Book Title': t.bookTitle,
-'Member ID': t.memberId,
-Status: t.status,
+'Book Title': t.bookTitle, 'Member ID': t.memberId, Status: t.status,
 'Issue Date': t.issueDate ? t.issueDate.toLocaleDateString() : '',
 'Due Date': t.dueDate ? t.dueDate.toLocaleDateString() : '',
 'Return Date': t.returnDate ? t.returnDate.toLocaleDateString() : '',
@@ -102,10 +93,8 @@ Status: t.status,
 const issuedSheet = XLSX.utils.json_to_sheet(issuedData);
 XLSX.utils.book_append_sheet(workbook, issuedSheet, 'Transactions');
 
-    // 6. Send file as download
-    res.setHeader('Content-Type', 'application/octet-stream');  // <--- CHANGED THIS
-    res.setHeader('Content-Disposition', 'attachment; filename="Library_Data.xlsx"');
-
+res.setHeader('Content-Type', 'application/octet-stream');
+res.setHeader('Content-Disposition', 'attachment; filename="Library_Data.xlsx"');
 
 const buffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'buffer' });
 res.send(buffer);
@@ -114,6 +103,26 @@ res.send(buffer);
 console.error("Export Error:", e);
 res.status(500).json({ error: "Failed to export Excel file" });
 }
+});
+
+// --- NEW: NOTICE BOARD ROUTES ---
+app.get('/api/notice', async (req, res) => {
+  try {
+    const noticeSetting = await Setting.findOne({ key: 'notice' });
+    res.json({ notice: noticeSetting ? noticeSetting.value : "" });
+  } catch (e) { res.status(500).json({ error: "Failed to get notice" }); }
+});
+
+app.post('/api/notice', async (req, res) => {
+  try {
+    const { notice } = req.body;
+    await Setting.findOneAndUpdate(
+      { key: 'notice' },
+      { value: notice },
+      { upsert: true } // Creates the notice if it doesn't exist
+    );
+    res.json({ message: "Notice updated!" });
+  } catch (e) { res.status(500).json({ error: "Failed to update notice" }); }
 });
 
 
@@ -163,7 +172,6 @@ const { bookId, memberId } = req.body;
 const book = await Book.findById(bookId);
 if (!book || book.copies < 1) return res.status(400).json({error: "Unavailable"});
 
-// 1. SET DUE DATE (15 Days from now)
 const issueDate = new Date();
 const dueDate = new Date();
 dueDate.setDate(issueDate.getDate() + 15);
@@ -190,7 +198,6 @@ const returnDate = new Date();
 txn.returnDate = returnDate;
 txn.status = 'Returned';
 
-// 2. CALCULATE FINE (5 Rupees per day late)
 if (returnDate > txn.dueDate) {
 const diffTime = Math.abs(returnDate - txn.dueDate);
 const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
