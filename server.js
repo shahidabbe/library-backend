@@ -102,9 +102,10 @@ Status: t.status,
 const issuedSheet = XLSX.utils.json_to_sheet(issuedData);
 XLSX.utils.book_append_sheet(workbook, issuedSheet, 'Transactions');
 
-// 6. Send file as download
-res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-res.setHeader('Content-Disposition', 'attachment; filename="Library_Data.xlsx"');
+    // 6. Send file as download
+    res.setHeader('Content-Type', 'application/octet-stream');  // <--- CHANGED THIS
+    res.setHeader('Content-Disposition', 'attachment; filename="Library_Data.xlsx"');
+
 
 const buffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'buffer' });
 res.send(buffer);
